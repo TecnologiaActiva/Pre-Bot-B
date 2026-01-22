@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Viewer</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="app">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <h1>Chats</h1>
+            <label class="upload-btn" for="fileInput">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 5v14M5 12h14"/>
+                </svg>
+            </label>
+            <form id="uploadForm" style="display:none;">
+                <input type="file" id="fileInput" accept=".zip" multiple required>
+            </form>
+        </div>
+        
+        <ul id="listaChats" class="chat-list">
+            <li class="empty-state">No hay chats cargados</li>
+        </ul>
+    </aside>
+
+    <!-- CHAT AREA -->
+    <main class="chat-area">
+        <header class="chat-header" id="chatHeader">
+            <div class="chat-avatar" id="chatAvatar">?</div>
+            <div class="chat-info">
+                <h2 id="tituloChat">Selecciona un chat</h2>
+                <span class="chat-status" id="chatStatus">Carga un archivo .zip para comenzar</span>
+            </div>
+        </header>
+
+        <div id="mensajes" class="messages">
+            <div class="welcome-message">
+                <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                <p>Selecciona un chat para ver los mensajes</p>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
