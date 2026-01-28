@@ -91,8 +91,8 @@ def login(
         key="access_token",
         value=token,
         httponly=True,
-        secure=False,      # True en prod (HTTPS)
-        samesite="lax",    # prod cross-site => "none" + secure=True
+        secure=True,      # True en prod (HTTPS)
+        samesite="none",    # prod cross-site => "none" + secure=True
         max_age=60 * 60 * 8,
         path="/",
     )

@@ -25,6 +25,7 @@ from services.parserwsp import classify_whatsapp_filename
 from services.storage_service import index_extracted_files, resolve_message_attachments, store_media_file
 import re
 import unicodedata
+from sqlalchemy import func
 
 
 DEFAULT_TIPO_TEXTO = "text"
@@ -201,7 +202,8 @@ def importar_chat_controller(file, team_id: int, user_id: int, session) -> dict[
         if not chat_txt:
             raise HTTPException(
                 status_code=400, detail="No se encontró archivo .txt en el ZIP")
-        extracted_index = index_extracted_files(workdir, chat_txt_path=chat_txt)
+        extracted_index = index_extracted_files(
+            workdir, chat_txt_path=chat_txt)
         mensajes = parsear_chat(chat_txt)
 
         contacto = upsert_contacto(
@@ -213,13 +215,13 @@ def importar_chat_controller(file, team_id: int, user_id: int, session) -> dict[
         )
         session.commit()
         session.refresh(contacto)
-        
+
         chat = _find_existing_chat(
-    session,
-    team_id=team_id,
-    nombre_contacto=nombre_contacto,
-    telefono_contacto=telefono_contacto,
-)
+            session,
+            team_id=team_id,
+            nombre_contacto=nombre_contacto,
+            telefono_contacto=telefono_contacto,
+        )
 
         if not chat:
             chat = Chat(
@@ -237,7 +239,7 @@ def importar_chat_controller(file, team_id: int, user_id: int, session) -> dict[
                 chat.numero = telefono_contacto
                 session.add(chat)
                 session.commit()
-                
+
                 extracted_index = index_extracted_files(
                     workdir, chat_txt_path=chat_txt)
 
@@ -259,7 +261,8 @@ def importar_chat_controller(file, team_id: int, user_id: int, session) -> dict[
 
             # fecha/hora
             if m.get("fecha") and m.get("hora"):
-                created_at = datetime.strptime(f"{m['fecha']} {m['hora']}", "%d/%m/%Y %H:%M")
+                created_at = datetime.strptime(
+                    f"{m['fecha']} {m['hora']}", "%d/%m/%Y %H:%M")
             else:
                 created_at = datetime.utcnow()
 
@@ -301,7 +304,8 @@ def importar_chat_controller(file, team_id: int, user_id: int, session) -> dict[
                     stored = stored_cache[src]
                 else:
                     try:
-                        stored = store_media_file(src_path=src, team_id=team_id, chat_id=chat.id)
+                        stored = store_media_file(
+                            src_path=src, team_id=team_id, chat_id=chat.id)
                     except FileNotFoundError:
                         # si el zip no trae ese archivo, no tires toda la importación
                         continue
@@ -326,20 +330,20 @@ def importar_chat_controller(file, team_id: int, user_id: int, session) -> dict[
         # ✅ score y commit al final
         ESTADO_CLIENTE = 1  # ajustá según tu sistema
         if estado_contacto == ESTADO_CLIENTE:
-                chat.pipeline_estado_id = None  # opcional
-                session.add(chat)
-                session.commit()
-                return {
-                    "chat_id": chat.id,
-                    "mensajes_guardados": mensajes_guardados,
-                    "archivos_guardados": archivos_guardados,
-                    "score_eventos": 0,
-                    "score_actual": chat.score_actual,
-                    "contacto_estado": estado_contacto,
-                    "contacto_telefono": telefono_contacto,
-                    "contacto_nombre": nombre_contacto,
-                    "score_skipped": True,
-                }
+            chat.pipeline_estado_id = None  # opcional
+            session.add(chat)
+            session.commit()
+            return {
+                "chat_id": chat.id,
+                "mensajes_guardados": mensajes_guardados,
+                "archivos_guardados": archivos_guardados,
+                "score_eventos": 0,
+                "score_actual": chat.score_actual,
+                "contacto_estado": estado_contacto,
+                "contacto_telefono": telefono_contacto,
+                "contacto_nombre": nombre_contacto,
+                "score_skipped": True,
+            }
 
         # ✅ calcular score solo con texto del cliente
         mensajes_cliente = [{"mensaje": t} for t in texto_cliente_para_score]
@@ -383,19 +387,50 @@ def descargar_archivo_controller(*, archivo_id: int, team_id: int, session) -> A
 
 
 def get_all_chat(team_id: int, session) -> list[dict[str, Any]]:
-    chats = session.exec(
-        select(Chat).where(Chat.team_id == team_id).order_by(
-            Chat.creado_en.desc())
+    # Subquery: 1 contacto por chat
+    chat_contacto_sq = (
+        select(
+            Mensaje.chat_id.label("chat_id"),
+            func.min(Mensaje.contacto_id).label("contacto_id"),
+        )
+        .group_by(Mensaje.chat_id)
+        .subquery()
+    )
+
+    # Subquery: último mensaje por chat (USANDO created_at)
+    last_msg_sq = (
+        select(
+            Mensaje.chat_id.label("chat_id"),
+            func.max(Mensaje.created_at).label("last_message_at"),
+        )
+        .group_by(Mensaje.chat_id)
+        .subquery()
+    )
+
+    rows = session.exec(
+        select(Chat, Contacto, last_msg_sq.c.last_message_at)
+        .join(chat_contacto_sq, chat_contacto_sq.c.chat_id == Chat.id)
+        .join(Contacto, Contacto.id == chat_contacto_sq.c.contacto_id)
+        .join(last_msg_sq, last_msg_sq.c.chat_id == Chat.id)
+        .where(Chat.team_id == team_id)
+        .order_by(last_msg_sq.c.last_message_at.desc())
     ).all()
 
     return [
         {
-            "id": c.id,
-            "nombre": c.nombre,
-            "numero": c.numero,
-            "fecha_carga": c.creado_en.strftime("%d/%m/%Y"),
+            "id": chat.id,
+            "nombre": chat.nombre,
+            "numero": chat.numero,
+            "telefono": contacto.telefono,
+            "telefono2": contacto.telefono2,
+            # 🔥 fecha del ÚLTIMO mensaje
+            "fecha_carga": (
+                last_message_at.isoformat()
+                if last_message_at
+                else None
+            ),
         }
-        for c in chats
+        for chat, contacto, last_message_at in rows
     ]
 
 

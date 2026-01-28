@@ -8,11 +8,15 @@ import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+import unicodedata
 
 MEDIA_ROOT = os.getenv("MEDIA_ROOT", "media")
 
+# Regex para detectar nombres de archivos adjuntos mencionados en el texto del chat.
+# Soporta espacios, puntos, guiones, paréntesis y extensiones comunes,
+# ya que WhatsApp exporta adjuntos con nombres "humanos" (ej: "CamScanner 18-11-2025 11.50.pdf").
 _ATTACHMENT_TOKEN_RE = re.compile(
-    r"(?P<name>[\w\-\(\)]+?\.(?:jpg|jpeg|png|gif|webp|mp4|mov|mkv|mp3|wav|m4a|opus|ogg|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|rar))",
+    r"(?P<name>[\w\s\-\(\)\.]+?\.(?:jpg|jpeg|png|gif|webp|mp4|mov|mkv|mp3|wav|m4a|opus|ogg|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|rar))",
     re.IGNORECASE,
 )
 
@@ -24,6 +28,19 @@ class StoredFile:
     mime_type: str | None
     size: int
     tipo: str
+
+
+def _norm(s: str) -> str:
+    """
+    Normaliza texto y nombres de archivo para comparaciones confiables.
+    Elimina caracteres invisibles de WhatsApp (LRM, BOM) y unifica Unicode.
+    """
+    return (
+        unicodedata.normalize("NFKC", s or "")
+        .replace("\u200e", "")   # LRM WhatsApp
+        .replace("\ufeff", "")   # BOM
+        .strip()
+    )
 
 
 def _safe_mkdir(path: Path) -> None:
@@ -73,6 +90,10 @@ def store_media_file(*, src_path: str, team_id: int, chat_id: int) -> StoredFile
 
 
 def index_extracted_files(extract_dir: str, *, chat_txt_path: str) -> dict[str, str]:
+    """
+    Indexa todos los archivos extraídos del ZIP (excepto el .txt del chat)
+    para poder resolver adjuntos mencionados en los mensajes.
+    """
     indexed: dict[str, str] = {}
     chat_txt_abs = str(Path(chat_txt_path).resolve())
 
@@ -86,7 +107,20 @@ def index_extracted_files(extract_dir: str, *, chat_txt_path: str) -> dict[str, 
 
 
 def resolve_message_attachments(*, message_text: str, extracted_index: dict[str, str]) -> list[str]:
+    """
+    Detecta archivos adjuntos mencionados en el texto del mensaje
+    comparando contra los archivos realmente extraídos del ZIP,
+    de forma tolerante a espacios, Unicode y caracteres invisibles.
+    """
     if not message_text:
         return []
-    tokens = [m.group("name") for m in _ATTACHMENT_TOKEN_RE.finditer(message_text)]
-    return [extracted_index[t] for t in tokens if t in extracted_index]
+
+    text = _norm(message_text).lower()
+    out: list[str] = []
+
+    for filename, full_path in extracted_index.items():
+        fname = _norm(filename).lower()
+        if fname and fname in text:
+            out.append(full_path)
+
+    return list(dict.fromkeys(out))

@@ -9,6 +9,7 @@ class Contacto(SQLModel, table=True):
 
     nombre: str
     telefono: Optional[str] = None
+    telefono2: Optional[str] = None
     username: Optional[str] = None
     estado : int
 

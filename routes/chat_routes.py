@@ -7,6 +7,7 @@ from controllers.storage_controller import obtener_archivo_para_descarga, listar
 from dependencies.auth import get_current_user
 from services.permissions import require_roles
 from models.users import User
+from controllers.contact_sync_controller import sync_contactos_controller 
 
 router = APIRouter(tags=["Chat"])
 
@@ -79,5 +80,22 @@ def archivos_de_chat(
     return listar_archivos_de_chat(
         chat_id=chat_id,
         team_id=team_id,
+        session=session,
+    )
+
+
+##SINCRONIZAR##CONTACTOS##DEOUTLOOK
+
+
+@router.post("/sync/outlook")
+def sync_contacts(
+    file: UploadFile = File(...),
+    current_user = Depends(require_roles(1)),  # 1=Admin (igual que venís usando)
+    session: Session = Depends(get_session),
+):
+    return sync_contactos_controller(
+        file=file,
+        team_id=current_user.team_id,
+        # user_id=current_user.id,
         session=session,
     )
