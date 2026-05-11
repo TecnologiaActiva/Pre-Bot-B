@@ -26,7 +26,7 @@ def obtener_mensajes(chat_id: int, current_user, session):
             Mensaje.chat_id == chat_id,
             Mensaje.team_id == current_user.team_id
         )
-        .order_by(Mensaje.fecha)
+        .order_by(Mensaje.fecha, Mensaje.id)
     ).all()
 
     return mensajes
