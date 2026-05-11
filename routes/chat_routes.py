@@ -7,9 +7,11 @@ from controllers.storage_controller import obtener_archivo_para_descarga, listar
 from dependencies.auth import get_current_user
 from services.permissions import require_roles
 from models.users import User
-from controllers.contact_sync_controller import sync_contactos_controller 
+from controllers.contact_sync_controller import sync_contactos_controller
+import os
 
 router = APIRouter(tags=["Chat"])
+
 
 @router.post("/procesar")
 def procesar(
@@ -27,6 +29,7 @@ def listar_chats(
 ):
     return obtener_chats(current_user, session)
 
+
 @router.get("/chats/{chat_id}")
 def chat_detalle(
     chat_id: int,
@@ -34,6 +37,7 @@ def chat_detalle(
     session: Session = Depends(get_session)
 ):
     return obtener_chat(chat_id, current_user, session)
+
 
 @router.get("/chats/{chat_id}/full")
 def chat_full(
@@ -51,14 +55,25 @@ def descargar_archivo(
     session: Session = Depends(get_session),
 ):
     team_id = getattr(current_user, "team_id", None)
+
     if team_id is None:
-        raise HTTPException(status_code=500, detail="User sin team_id (ajustar modelo/permiso)")
+        raise HTTPException(
+            status_code=500,
+            detail="User sin team_id (ajustar modelo/permiso)"
+        )
 
     archivo = obtener_archivo_para_descarga(
         archivo_id=archivo_id,
         team_id=team_id,
         session=session,
     )
+
+    # 🔥 VALIDAR EXISTENCIA FÍSICA
+    if not os.path.exists(archivo.path):
+        raise HTTPException(
+            status_code=404,
+            detail="El archivo físico no existe"
+        )
 
     return FileResponse(
         path=archivo.path,
@@ -75,7 +90,8 @@ def archivos_de_chat(
 ):
     team_id = getattr(current_user, "team_id", None)
     if team_id is None:
-        raise HTTPException(status_code=500, detail="User sin team_id (ajustar modelo/permiso)")
+        raise HTTPException(
+            status_code=500, detail="User sin team_id (ajustar modelo/permiso)")
 
     return listar_archivos_de_chat(
         chat_id=chat_id,
@@ -84,13 +100,13 @@ def archivos_de_chat(
     )
 
 
-##SINCRONIZAR##CONTACTOS##DEOUTLOOK
+# SINCRONIZAR##CONTACTOS##DEOUTLOOK
 
 
 @router.post("/sync/outlook")
 def sync_contacts(
     file: UploadFile = File(...),
-    current_user = Depends(require_roles(1)),  # 1=Admin (igual que venís usando)
+    current_user=Depends(require_roles(1)),  # 1=Admin (igual que venís usando)
     session: Session = Depends(get_session),
 ):
     return sync_contactos_controller(
